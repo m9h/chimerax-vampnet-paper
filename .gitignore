@@ -1,0 +1,10 @@
+# LaTeX / tectonic build artifacts
+*.aux
+*.bbl
+*.blg
+*.fls
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.synctex.gz

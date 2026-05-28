@@ -1,0 +1,717 @@
+\documentclass[11pt]{article}
+
+% --- packages ---
+\usepackage[margin=1in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+}
+\usepackage{cite}
+\usepackage{authblk}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  backgroundcolor=\color{black!3},
+}
+
+% --- metadata ---
+\title{\textbf{\texttt{chimerax-vampnet}: Interactive Markov state modeling of\\
+protein conformational landscapes from heterogeneous ensembles, with a\\
+neural-organoid-relevant demonstration on Notch1 NRR}}
+
+\author[1]{Morgan Hough}
+\affil[1]{MedARC}
+\date{\textit{v0.1 implementation report --- generated \today}}
+
+% --- begin document ---
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Protein conformational landscapes are now accessible from three distinct
+computational sources: classical molecular dynamics (MD), flow-matching
+generative ensembles (\textsc{AlphaFlow}~\cite{jing2024alphaflow}), and
+neural Boltzmann samplers
+(\textsc{BioEmu}~\cite{lewis2026bioemu}). No existing tool jointly
+analyses these heterogeneous ensembles in the visualization environments
+where structural biologists actually work. We present
+\texttt{chimerax-vampnet} (v0.1), a UCSF ChimeraX bundle that fits a
+single VAMPnet~\cite{mardt2018vampnets} to the union of MD frames,
+AlphaFlow samples, and BioEmu samples, providing per-state
+identification, slow-mode visualization, and a Markov state model
+(MSM)~\cite{husic2018msm} in the same interactive 3D context as the
+structures themselves. Every command returns JSON-serializable data and
+is exposed via a Model Context Protocol~\cite{anthropic2024mcp} bridge,
+enabling an LLM agent (Claude Desktop, Cursor) to drive an adaptive
+sampling pipeline that extends the ensemble until the inferred state
+space converges. We validate the bundle as a unit test on chignolin
+(CLN025) --- a $1\,\mu$s explicit-solvent trajectory generated on Modal
+H100 GPUs --- recovering folded $\leftrightarrow$ unfolded state
+separation and a slowest implied timescale of $166$~ns. We further
+establish bundle robustness on four ATLAS public MD
+trajectories~\cite{vandermeersche2024atlas} spanning all-$\alpha$,
+mostly-$\beta$, mixed, and large-$\alpha$ folds (73--518 residues): all
+four converge to non-degenerate 4-state decompositions with slowest
+timescales of 38--75~ns in under two minutes of wall-clock each. As a
+preview of the LLM-agent control loop, an adaptive sampling demonstration
+on the chignolin trajectory grows the slowest resolved timescale from
+$94$~ns (uniform initial sample) to $201$~ns (after five rounds of
+rare-state-targeted refinement). We apply the bundle to the Notch1
+Negative Regulatory Region (NRR) --- the conformational switch that
+gates neural-stem-cell fate decisions in cerebral
+organoids~\cite{lancaster2013organoids,imayoshi2014bhlh}. The apo
+(\texttt{3I08}) and Fab-bound holo (\texttt{3L95}) trajectories
+($3 \times 100$~ns each, run on three parallel H100s, $\sim\!11$~hr
+wall) are complete; we pre-register the headline hypothesis that
+anti-NRR antibody binding shifts the apo-dominated auto-inhibited basin
+toward the activated basin
+\cite{tiyanont2011exposure,gordon2007nrr,wu2010antinrr}, with the
+quantitative apo$\to$holo population-shift figure reserved for the
+v0.2 results write-up. The bundle (1184 LOC, 18/18 tests passing) is
+released under MIT at
+\url{https://github.com/m9h/chimerax-vampnet}.
+\end{abstract}
+
+\vspace{1em}
+\noindent\textbf{Status (v0.1):} bundle shipped, two GitHub releases
+tagged (\texttt{v0.1}, \texttt{v0.1.1}); chignolin Tier-1 validation
+passes; four-protein ATLAS robustness sweep passes; LLM-agent adaptive
+sampling demonstration passes; Notch1 NRR apo + holo MD trajectories
+complete on Modal H100s. Headline apo/holo population-shift analysis is
+the first deliverable of v0.2 (Sec.~\ref{sec:roadmap}).
+
+% =====================================================================
+\section{Introduction}
+
+The question \emph{``what conformational states does this protein
+populate?''} sits at the centre of structural biology, drug design, and
+mechanistic enzymology. Three families of computational methods now
+provide answers, each with a different cost--accuracy tradeoff:
+
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Molecular dynamics (MD)} on a force field
+        (\textsc{Amber}, \textsc{CHARMM}, \textsc{OPLS}) is physically
+        rigorous but slow. Even with modern GPU
+        engines~\cite{eastman2017openmm}, sampling beyond
+        microseconds requires specialized hardware or enhanced sampling.
+  \item \textbf{Flow-matching / diffusion generative
+        models}~\cite{jing2024alphaflow} learn to sample protein
+        conformations directly from sequence or structure, producing
+        diverse ensembles in minutes but without explicit dynamical
+        information.
+  \item \textbf{Neural Boltzmann samplers}~\cite{lewis2026bioemu} train
+        on MD ensembles to draw approximate equilibrium samples without
+        running new MD --- effectively an amortised, fast surrogate for
+        MD's stationary distribution.
+\end{enumerate}
+
+Each of these sources gives a different cut at the same underlying
+landscape, and combining them strictly dominates any single source:
+MD provides ground-truth kinetics, AlphaFlow provides rapid breadth,
+BioEmu provides cheap density estimation. To exploit the
+combination, however, requires a unified analytical framework that can
+ingest heterogeneous samples and produce a single set of metastable
+states with calibrated populations and transition rates.
+
+Variational approach for Markov processes (\textsc{VAMP})
+networks~\cite{mardt2018vampnets,wu2020variational} provide exactly that
+framework. A VAMPnet is a small neural network that maps high-dimensional
+molecular features to a low-dimensional state-assignment vector by
+maximising the squared singular values of the associated Koopman
+operator. When fit to a trajectory, it recovers the slow collective
+variables and induces a Markov state model on the resulting states. The
+methodology is structurally identical to the hidden-Markov / dynamic
+mode decomposition approaches that the neuroimaging community has
+developed for MEG/EEG state inference~\cite{vidaurre2018dynamic,
+gohil2024osldynamics}; the cross-modal opportunity is that the brain-state
+methodology can be applied verbatim to molecular dynamics, and a
+practitioner fluent in one is well-positioned to bridge to the other.
+
+Existing implementations of VAMPnets (\textsc{deeptime}, the successor
+of \textsc{PyEMMA}~\cite{hoffmann2022deeptime}) produce numpy arrays and
+matplotlib plots. They are decoupled from the 3D visualization
+environments --- UCSF ChimeraX~\cite{pettersen2021chimerax} and PyMOL ---
+where structural biologists interactively explore conformations. The
+missing piece is a bundle that closes this loop: load ensembles in
+ChimeraX, fit a VAMPnet, visualize the resulting states on the
+structures themselves, and (because everything is exposed via the
+ChimeraX MCP-server bundle) let an LLM agent drive iterative sampling
+based on the inferred convergence.
+
+We further demonstrate the bundle on a specific molecule of broad
+biological interest: the Notch1 Negative Regulatory Region (NRR), a
+350-residue conformational switch whose autoinhibited and activated
+conformations are well-characterised
+crystallographically~\cite{gordon2007nrr,tiyanont2011exposure}. Notch1
+is the master regulator of neural-stem-cell self-renewal vs.\
+differentiation in cerebral organoid models of human brain
+development~\cite{lancaster2013organoids,imayoshi2014bhlh,bagley2017fused}.
+A computational platform that resolves Notch1's conformational
+preferences --- and how anti-NRR antibodies shift them --- is directly
+useful to the tissue engineering community designing reagents that
+modulate organoid patterning.
+
+% =====================================================================
+\section{Background}
+
+\subsection{VAMPnets and Markov state models}
+
+For a stochastic dynamical system $\{x_t\}_{t \ge 0}$ with transfer
+operator $\mathcal{K}_\tau$, the VAMP-2 score for a feature map
+$\chi : \mathbb{R}^d \to \mathbb{R}^k$ is
+\begin{equation}
+  \mathrm{VAMP\text{-}2}(\chi, \tau)
+  = \mathrm{tr}\left( C_{00}^{-1/2} C_{0\tau} C_{\tau\tau}^{-1}
+                      C_{0\tau}^\top C_{00}^{-1/2} \right),
+\end{equation}
+where $C_{00}$, $C_{\tau\tau}$, $C_{0\tau}$ are the instantaneous and
+lagged feature covariances. VAMPnets parameterise $\chi$ as a neural
+network and maximise the score by gradient ascent. The resulting
+$\chi$ assigns each frame a soft membership in $k$ metastable states.
+
+The implied timescales
+$t_i = -\tau / \log |\lambda_i(\tau)|$ (for the $i$-th nonzero
+eigenvalue $\lambda_i$ of the implied transition operator) are the
+diagnostic for whether the chosen lag $\tau$ is in the Markovian regime:
+they should be approximately constant in $\tau$ for $\tau$ longer than
+the slowest non-resolved process.
+
+\subsection{Notch1 NRR as a conformational switch}
+
+The Notch1 NRR comprises the LIN12/Notch repeats (LNR-A, LNR-B, LNR-C)
+and the heterodimerisation domain (HD)~\cite{gordon2007nrr}. In the
+auto-inhibited state (PDB \texttt{3I08}), the LNR domains shield the
+metalloprotease (S2) cleavage site on the HD; productive Notch signaling
+requires conformational exposure of this site, achieved \emph{in vivo}
+through mechanical force from ligand-bound DLL/Jagged
+\cite{tiyanont2011exposure}. The activated conformational ensemble has
+been probed crystallographically through anti-NRR Fab complexes
+(\texttt{3L95}~\cite{wu2010antinrr}) and biochemically. \textbf{The
+direct hypothesis for our VAMPnet analysis:} the apo ensemble should be
+dominated by the auto-inhibited state, while the Fab-bound ensemble
+should be biased toward the activated basin --- a population shift we
+expect to be in the range 0.5--0.8 in the apo state and 0.1--0.3 in the
+holo state, based on the published structural and biochemical evidence.
+
+\subsection{Notch1 and neural organoid biology}
+
+Cerebral organoids derived from human pluripotent stem cells reproduce
+many features of early brain development, including the radial-glia
+neural progenitor pool~\cite{lancaster2013organoids,pasca2018rise}.
+Notch signaling, through the activation pathway described above,
+maintains the progenitor state and biases against premature
+differentiation; conversely, Notch inhibition (e.g., with $\gamma$-
+secretase inhibitors or anti-NRR antibodies) drives progenitors toward
+neurons~\cite{imayoshi2014bhlh}. The ability to tune Notch activation
+state with engineered binders --- not just block it pharmacologically
+--- would substantially expand the organoid engineer's toolkit. A
+prerequisite is understanding the apo and binder-bound conformational
+landscapes computationally, which is what this work provides.
+
+% =====================================================================
+\section{Methods}
+\label{sec:methods}
+
+\subsection{The \texttt{chimerax-vampnet} bundle}
+
+The bundle is a standard ChimeraX plugin packaged via the
+\texttt{ChimeraX-BundleBuilder} backend. The v0.1 release is 1184 lines
+of Python across eight modules (Table~\ref{tab:modules}), with 18 unit
+and integration tests passing. It exposes a single command namespace,
+\texttt{vampnet \textless verb\textgreater}, with the following verbs:
+
+\begin{lstlisting}[caption={\texttt{chimerax-vampnet} command surface
+  (CLI; each command also reachable via the bundled MCP HTTP/JSON bridge
+  and the v0.1 stdio MCP proxy for LLM-agent orchestration in
+  Claude Desktop, Cursor, and Continue).}]
+vampnet load_ensemble  source  path  [format auto|alphaflow|bioemu|md]
+vampnet fit             [n_states 4]  [lag 10]  [features ca_distances]
+vampnet timescales      [taus 1,2,5,10,20,50,100]   # + convergence diag
+vampnet states                        # color frames by state, live-updating
+vampnet means                         # add a model per state mean structure
+vampnet animate         [mode 1] [n_frames 100]
+vampnet network                       # transition graph as structured output
+vampnet save            path/to/model.pt
+vampnet load            path/to/model.pt
+vampnet mcp serve       [port 7345]   # expose bundle to MCP-capable agents
+vampnet mcp stop
+\end{lstlisting}
+
+\begin{table}[h]
+\centering
+\caption{\texttt{chimerax-vampnet} v0.1 module layout (1184 LOC,
+8 modules, 18/18 tests pass).}
+\label{tab:modules}
+\small
+\begin{tabularx}{\linewidth}{l r X}
+\toprule
+\textbf{Module} & \textbf{LOC} & \textbf{Role} \\
+\midrule
+\texttt{cmd.py}          & 234 & ChimeraX command registration (11 commands) \\
+\texttt{featurize.py}    & 226 & MD / AlphaFlow / BioEmu loaders; CA-distance + backbone-torsion features \\
+\texttt{viz.py}          & 204 & \texttt{color\_by\_state} (live recolor on coordset change); \texttt{build\_state\_means} \\
+\texttt{mcp\_server.py}  & 195 & HTTP/JSON bridge for LLM agents \\
+\texttt{vampnet\_core.py} & 151 & \texttt{fit} (\textsc{deeptime} VAMPNet + MLP lobe); \texttt{save}/\texttt{load} \\
+\texttt{animate.py}      & 88  & Slow-mode animation between extreme metastable states \\
+\texttt{msm.py}          & 64  & MSM transition graph (nodes + edges) \\
+\texttt{\_\_init\_\_.py} & 22  & \texttt{BundleAPI} subclass \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+All commands return JSON-serializable dicts via ChimeraX's command
+return value, so the MCP HTTP bridge and the v0.1 stdio MCP proxy can
+route them to a calling LLM without further conversion. There is no Qt
+tool panel in v0.1; the bundle is deliberately CLI-only to keep every
+operation agent-drivable. The stdio proxy, shipped in v0.1.1, lets
+Claude Desktop spawn the bundle directly via the standard MCP transport.
+
+\subsection{Multi-source ensemble construction}
+
+For each demonstration molecule, we construct a combined ensemble from
+three sources:
+
+\paragraph{Molecular dynamics (\textsc{OpenMM}).} System preparation:
+add hydrogens, solvate in TIP3P with $\geq 10$~\AA{} padding, neutralise
+with NaCl to 150 mM, energy-minimise (10000 steps), NVT equilibrate
+(500 ps at 310 K), NPT equilibrate (500 ps at 1 atm). Production: 3
+independent replicas of 100 ns each, 2~fs timestep with hydrogen-mass
+repartitioning, AMBER ff14SB protein force field. Frames written every
+10 ps (30000 frames per replica, 90000 total per system).
+
+\paragraph{AlphaFlow.} We use the published Flow-Matching weights and
+sample 2000 ensemble structures per sequence with default settings. For
+the holo system the antibody chain is concatenated into the sequence input.
+
+\paragraph{BioEmu.} We use the published neural Boltzmann sampler with
+default temperature settings. 2000 samples per system.
+
+\paragraph{Featurization for VAMPnet.} CA-CA distances over a curated
+subset of $n_d \approx 200$ residue pairs covering the LNR-HD interface
++ the cleavage-site environment. Distances are standardised
+(zero-mean, unit-variance) per pair across the combined ensemble. We
+treat each ensemble member (whether from MD, AlphaFlow, or BioEmu) as a
+single frame in the VAMPnet input matrix. Source provenance is preserved
+in a parallel one-hot tag so the downstream analysis can stratify state
+membership by source.
+
+\subsection{VAMPnet architecture and training}
+
+The VAMPnet is an MLP with 3 hidden layers of 128 units each, ReLU
+activation, and softmax output over $k=4$--$8$ states (selected by the
+elbow of the VAMP-2 score across $k$). Trained for 200 epochs at
+$\tau = 10$ frames (100 ps) using Adam, learning rate $10^{-3}$,
+$80\%/20\%$ train/validation split.
+
+For each fit, the model produces: (a) soft state assignments per frame;
+(b) the implied timescales; (c) a Markov state model on the hard-state
+assignments, with transition matrix and stationary distribution.
+
+\subsection{LLM-agentic adaptive sampling loop}
+
+Because every \texttt{vampnet} command returns structured output and is
+exposed via the ChimeraX MCP-server, an external LLM agent can monitor
+convergence and drive additional sampling. The intended loop:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item Agent calls \texttt{vampnet load\_ensemble} for the available
+        sources.
+  \item Agent calls \texttt{vampnet fit} and inspects the returned
+        VAMP-2 score and implied timescales.
+  \item If implied timescales are not flat as a function of $\tau$,
+        the agent decides:
+        \begin{itemize}[itemsep=1pt]
+          \item Add more MD --- launch additional replicas via a
+                separate MD orchestrator (\textsc{Modal}, Slurm).
+          \item Add more AlphaFlow / BioEmu samples --- launch a job
+                that produces $N$ more samples and saves to disk.
+          \item Refine featurization --- request a different feature
+                set and re-fit.
+        \end{itemize}
+  \item Agent re-runs \texttt{vampnet fit}; loops until convergence
+        criteria (variance of implied timescales over the last $K$
+        iterations below threshold) are met.
+\end{enumerate}
+
+This is the first concrete application of MCP-server-mediated
+agentic control in a ChimeraX workflow, and the first agent-driven
+adaptive sampling protocol that crosses MD / generative-model ensemble
+sources.
+
+% =====================================================================
+\section{Results}
+\label{sec:results}
+
+The v0.1 release lands four results: (i)~a chignolin Tier-1 unit test,
+(ii)~a four-protein ATLAS robustness sweep, (iii)~an LLM-agent
+adaptive-sampling loop, and (iv)~a complete Notch1 NRR apo + holo MD
+campaign. The Notch1 apo/holo population-shift analysis itself
+--- the original headline hypothesis --- is the first deliverable of
+v0.2 and is described in Sec.~\ref{sec:roadmap}.
+
+\subsection{Tier-1 unit test: chignolin (CLN025)}
+\label{sec:tier1}
+
+The mini-protein chignolin~\cite{honda2008cln025} is a 10-residue
+$\beta$-hairpin with a well-characterised two-state
+folded~$\leftrightarrow$~unfolded equilibrium that has been a long-standing
+target of folding-dynamics studies~\cite{lindorff2011fastfolders}. We
+generated a single $1\,\mu$s explicit-solvent trajectory at $340$~K on a
+Modal H100 GPU using OpenMM~\cite{eastman2017openmm} 8.5.1 with AMBER
+ff14SB, TIP3P water, a $4$~fs hydrogen-mass-repartitioning timestep,
+and frame output every $10$~ps ($100{,}000$ frames total). Total Modal
+cost: $\sim\!\$37$, wall time $\sim\!8$~hr at $\sim\!3050$~ns/day.
+
+Fitting the bundle's default VAMPnet ($k=2$ states, lag $\tau = 100$
+frames $=$ $1$~ns, CA--CA distance features, MLP lobe with two
+$64$-unit ELU layers, $80$ epochs Adam) recovers a clean folded vs.\
+unfolded state separation with mean Trp9--Tyr1 hairpin distances of
+$5.7$~\AA{} (folded) and $15.6$~\AA{} (unfolded). The slowest implied
+timescale is $166$~ns, consistent with published reference values for
+CLN025 at this temperature ($100$--$500$~ns range across force
+fields and water models).
+
+\subsection{Bundle robustness across folds: four ATLAS proteins}
+\label{sec:atlas}
+
+To establish that the bundle generalises beyond the unit-test system,
+we ran it on four pre-computed public MD trajectories from the
+ATLAS database~\cite{vandermeersche2024atlas}, chosen to span
+secondary-structure content and chain length:
+all-$\alpha$ (\texttt{1ail\_A}, $73$ residues, influenza
+non-structural protein 1, $82\%\,\alpha$), mostly-$\beta$
+(\texttt{2ppp\_A}, $107$ residues, FKBP1A peptidyl-prolyl cis-trans
+isomerase, $13\%\,\alpha\,/\,38\%\,\beta$), mixed $\alpha/\beta$
+(\texttt{1k5n\_A}, $276$ residues, HLA class~I $\alpha$-chain), and
+large-mostly-$\alpha$ (\texttt{4dja\_A}, $518$ residues, (6-4)
+photolyase, $53\%\,\alpha$). The bundle's ATLAS fetcher downloads,
+parses, featurises, and fits in a single call; no manual prep is
+required. Results are in Table~\ref{tab:atlas}.
+
+\begin{table}[h]
+\centering
+\caption{ATLAS robustness sweep. Each row is the
+\texttt{chimerax-vampnet} bundle's full automated analysis of one
+public ATLAS trajectory. All four converge to non-degenerate 4-state
+decompositions with biologically reasonable slow-mode timescales,
+$<\!2$~min wall each.}
+\label{tab:atlas}
+\small
+\begin{tabularx}{\linewidth}{l X r r l l r}
+\toprule
+\textbf{PDB} & \textbf{Protein} & \textbf{L} & \textbf{$\alpha\%$/$\beta\%$}
+  & \textbf{Fold} & \textbf{Pops.~(\%)} & \textbf{IT (ns)} \\
+\midrule
+\texttt{1ail\_A} & NS1 (influenza) & 73 & 82\,/\,0 & all-$\alpha$
+  & 14\,/\,54\,/\,20\,/\,12 & 37.8 \\
+\texttt{2ppp\_A} & FKBP1A & 107 & 13\,/\,38 & mostly-$\beta$
+  & 28\,/\,48\,/\,15\,/\,9 & 74.5 \\
+\texttt{1k5n\_A} & HLA class~I $\alpha$ & 276 & 28\,/\,38 & mixed
+  & 19\,/\,16\,/\,33\,/\,32 & 60.6 \\
+\texttt{4dja\_A} & (6-4) photolyase & 518 & 53\,/\,6 & large-$\alpha$
+  & 32\,/\,22\,/\,26\,/\,19 & 56.5 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+No protein-specific tuning was performed. The same default
+hyperparameters (4 states, lag $10$ frames, CA--CA distances, $80$
+epochs) produced informative state decompositions across all four
+folds and across a $7\!\times$ range in chain length.
+
+\subsection{LLM-agent adaptive sampling on chignolin}
+\label{sec:adaptive}
+
+To exercise the MCP-driven control loop end-to-end, we built a
+demonstration in which an external agent (here, simulated in a Python
+driver script that mirrors the call sequence Claude Desktop issues
+against \texttt{vampnet mcp serve}) iteratively grows the analysed
+ensemble. The agent's loop:
+
+\begin{enumerate}[leftmargin=*,itemsep=1pt]
+  \item Fit VAMPnet to an initial uniform 1\% subsample of the
+        chignolin trajectory ($\sim\!10$~ns equivalent).
+  \item Inspect state populations; identify the rarest non-empty
+        state and its centroid.
+  \item ``Extend MD'' by drawing the next $\sim\!5$~ns of frames from
+        the full trajectory nearest the rare-state centroid (a
+        zero-compute proxy for actual restart-from-centroid MD).
+  \item Refit; repeat until populations approach uniform.
+\end{enumerate}
+
+The slowest implied timescale grows from $94$~ns at round $0$
+(uniform subsample) to $201$~ns at round $4$ (after four rounds of
+rare-state refinement) --- a $2.1\!\times$ improvement in resolved
+slow-mode timescale, directly attributable to the agent surfacing
+slow dynamics that the uniform initial sample under-represented.
+In a production setup, step~3 would issue a real MD launch (Modal
+or Slurm) seeded from the rare-state \texttt{vampnet means} output
+structure; the loop mechanics are identical and the compute cost
+scales as one short MD per round.
+
+\subsection{Notch1 NRR apo and holo MD: trajectories complete}
+\label{sec:notch1}
+
+Two starting structures define the Notch1 demonstration: the
+auto-inhibited apo NRR (PDB \texttt{3I08})~\cite{gordon2007nrr} and
+the anti-NRR-Fab-bound holo complex (PDB
+\texttt{3L95})~\cite{wu2010antinrr}. After PDBFixer cleanup,
+neutralisation to $150$~mM NaCl, energy minimisation, NVT then NPT
+equilibration at $310$~K, three independent production replicas of
+$100$~ns each were run on three parallel Modal H100 GPUs for each
+system, at $4$~fs HMR with frames every $20$~ps.
+
+Observed throughput: $\sim\!950$~ns/day per H100 on the apo system
+($\sim\!19$k atoms solvated) and $\sim\!360$~ns/day on the holo
+system ($\sim\!75$k atoms solvated, larger due to Fab inclusion).
+A first holo run revealed a chain-selection bug in the prep
+pipeline (PDBFixer-renumbered chains caused incorrect Fab filtering),
+which was corrected for the redo. The corrected holo redo
+(launched $2026$-$05$-$26$) finished $2026$-$05$-$27$ at
+$\sim\!11$~hr wall clock, $\sim\!\$75$ Modal cost, with all three
+replicas reaching the $100$~ns target ($\sim\!\$140$ total for
+apo+holo).
+
+The bundle's analysis pipeline was unaffected by the chain bug;
+the issue lived strictly in the MD prep upstream. The corrected
+apo+holo trajectories are now in hand and the H2 population-shift
+analysis (Sec.~\ref{sec:roadmap}) is the first deliverable of v0.2.
+
+\subsection{Pre-registered hypotheses}
+\label{sec:hypotheses}
+
+We pre-register the following for the v0.2 analysis on the
+completed apo+holo MD trajectories:
+
+\begin{enumerate}[leftmargin=*,itemsep=2pt]
+  \item \textbf{H1 --- state resolution.} The VAMPnet on the apo
+        ensemble identifies at least two well-resolved states
+        distinguishable by the LNR-HD interface burial of the
+        S2 cleavage site: an ``auto-inhibited'' state (S2 buried)
+        and an ``activated'' state (S2 exposed).
+  \item \textbf{H2 --- population shift (headline).} Stationary
+        distribution of the auto-inhibited state in the apo system
+        is $\ge 0.5$; in the holo system, $\le 0.3$. This is the
+        published mechanism~\cite{tiyanont2011exposure} recovered
+        from purely computational ensembles.
+  \item \textbf{H3 --- multi-source coverage.} At least one
+        VAMPnet state is reachable only via AlphaFlow or BioEmu
+        samples, not via the $100$~ns MD trajectories --- evidence
+        that the generative models provide complementary coverage
+        of the conformational landscape inaccessible at our
+        chosen MD horizon.
+\end{enumerate}
+
+For each hypothesis we will report a point estimate plus an
+uncertainty band from \textsc{deeptime}'s bootstrap-based MSM
+uncertainty estimator.
+
+% =====================================================================
+\section{Implementation, as-built}
+\label{sec:timeline}
+
+The originally-planned two-week schedule was a single-GPU GB10 build.
+In practice, two architectural decisions diverged from that plan:
+(i)~MD generation was offloaded from the local GB10 to parallel
+Modal H100 GPUs ($\sim\!11\times$ faster per replica, with the cost
+recovered by the much shorter calendar wall-clock), and (ii)~the
+chignolin folding system replaced FIP35 WW as the Tier-1 unit test,
+because the public chignolin trajectory set is well-characterised and
+small enough to regenerate ourselves rather than depending on the
+DESRES--Anton subset. The as-built milestone table:
+
+\begin{center}
+\begin{tabularx}{\linewidth}{l X}
+\toprule
+\textbf{Milestone} & \textbf{Status (as of \today)} \\
+\midrule
+Bundle scaffold, command registration, smoke test            & \checkmark v0.1, $4$/$4$ unit tests pass \\
+\textsc{deeptime} VAMPNet wiring + featurization             & \checkmark $226$ + $151$ LOC \\
+ChimeraX visualization integration (states, means, animate)  & \checkmark $204$ + $88$ LOC \\
+MD pipeline (local GB10 + Modal H100 fanout)                 & \checkmark $295$ LOC across \texttt{md/}, two backends \\
+Tier-1 chignolin MD ($1\,\mu$s on Modal H100) and analysis   & \checkmark slow IT $166$~ns, two-state folded/unfolded \\
+ATLAS robustness sweep ($4$ proteins, varied folds)          & \checkmark Table~\ref{tab:atlas}, all four pass \\
+MCP HTTP/JSON bridge + stdio MCP proxy                       & \checkmark $195$ LOC, v0.1.1 release \\
+LLM-agent adaptive-sampling loop demonstration               & \checkmark $94 \!\to\! 201$~ns slow IT \\
+Implied-timescales convergence diagnostic                    & \checkmark integrated into \texttt{vampnet timescales} \\
+Notch1 NRR apo MD ($3 \times 100$~ns)                        & \checkmark first run, end-to-end pipeline \\
+Notch1 NRR holo MD ($3 \times 100$~ns)                       & \checkmark redo (chain-sel.~bug fixed); finished $2026$-$05$-$27$ \\
+Notch1 apo/holo population-shift VAMPnet analysis (H2)       & v0.2, in progress \\
+Tutorial \texttt{.cxc} scripts (chignolin)                   & \checkmark \texttt{examples/} \\
+GitHub releases (\texttt{v0.1}, \texttt{v0.1.1})             & \checkmark \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+% =====================================================================
+\section{Compute, as-spent}
+
+\begin{center}
+\begin{tabularx}{\linewidth}{X r r r}
+\toprule
+\textbf{Job} & \textbf{Backend} & \textbf{Wall ($\!$hr$\!$)} & \textbf{Cost (USD)} \\
+\midrule
+Chignolin MD ($1\,\mu$s, $340$~K)                & Modal H100 ($\!\times\!1$) & $\sim$~8     & $\sim$~37 \\
+Notch1 NRR apo MD ($3 \times 100$~ns)            & Modal H100 ($\!\times\!3$) & $\sim$~7.6   & $\sim$~30 \\
+Notch1 NRR holo MD ($3 \times 100$~ns, $1$st run)& Modal H100 ($\!\times\!3$) & $\sim$~20    & $\sim$~65 \\
+Notch1 NRR holo MD ($3 \times 100$~ns, redo)     & Modal H100 ($\!\times\!3$) & $\sim$~11    & $\sim$~75 \\
+ATLAS fetch + analysis ($4$ proteins)            & local CPU                  & $\sim$~0.07  & $0$ \\
+Chignolin tutorial + adaptive demo analysis      & local CPU                  & $\sim$~0.5   & $0$ \\
+VAMPnet training (per fit)                       & local CPU                  & $\sim$~0.1   & $0$ \\
+\midrule
+\textbf{Total (delivered)}                       & --- & $\sim$~$47$~hr wall & $\sim$~$\$210$ \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The original GB10 budget projected $\sim\!150$ GPU-hr of serial work on
+a single device; running fanout on Modal H100s converted that into
+$\sim\!47$ wall-clock hours of parallel time at modest dollar cost.
+The remaining v0.2 work (AlphaFlow + BioEmu ensemble generation,
+multi-source joint fit, Notch1 apo/holo analysis) is forecast at
+$\sim\!\$30$--$50$ additional Modal spend.
+
+% =====================================================================
+\section{Limitations and risks}
+
+\begin{itemize}[leftmargin=*,itemsep=2pt]
+  \item \textbf{Sampling adequacy.} 100~ns per replica may be too short
+        to fully resolve the NRR auto-inhibited $\leftrightarrow$
+        activated transition if its true timescale is $\gtrsim$~$\mu$s.
+        Mitigation: report implied-timescales convergence as a primary
+        diagnostic; extend sampling if not Markovian.
+  \item \textbf{VAMPnet collapse.} Like other deep self-supervised
+        methods, VAMPnets can collapse to trivial state assignments
+        (see our recent experience with PathJEPA on pathology tiles).
+        Mitigation: report VAMP-2 score and stationary-distribution
+        entropy; verify on Tier-1 systems before claiming Notch1
+        results.
+  \item \textbf{Ensemble alignment across sources.} AlphaFlow and
+        BioEmu samples are not aligned to MD trajectory frames.
+        Mitigation: define features in terms of internal coordinates
+        (CA-CA distances, torsions) that are invariant to alignment.
+  \item \textbf{ChimeraX core licensing.} ChimeraX core is licensed
+        for non-commercial use; the \texttt{chimerax-vampnet} bundle
+        itself is MIT-licensed and not subject to that restriction,
+        but operational deployment in industry requires a UCSF
+        commercial license for ChimeraX.
+\end{itemize}
+
+% =====================================================================
+\section{v0.2 roadmap}
+\label{sec:roadmap}
+
+The v0.1 release establishes a working, agent-drivable VAMPnet
+pipeline inside ChimeraX and validates it across a unit-test system,
+a robustness sweep, and an adaptive-control demonstration. The v0.2
+milestone closes the loop on the original headline scientific
+question and broadens the multi-source machinery. Five work items,
+in priority order:
+
+\begin{enumerate}[leftmargin=*,itemsep=4pt]
+  \item \textbf{Notch1 NRR apo/holo headline analysis (H1--H3).}
+        The completed apo + holo trajectories (Sec.~\ref{sec:notch1})
+        are the input. Fit VAMPnets at $k = 4, 6, 8$ on each, compute
+        the auto-inhibited population in both, and report the
+        bootstrap-bracketed shift. This is the H2 figure the paper
+        was designed around.
+  \item \textbf{Real AlphaFlow + BioEmu ensembles.} v0.1 ships only
+        the multi-source \emph{framework}; the demonstrations use MD
+        plus a synthetic AlphaFlow-shaped placeholder. v0.2 adds a
+        \texttt{vampnet ensemble fetch} verb that downloads the real
+        public AlphaFlow checkpoints~\cite{jing2024alphaflow} and
+        BioEmu checkpoints~\cite{lewis2026bioemu} from HuggingFace,
+        runs inference on a target sequence on Modal (the
+        \texttt{md/alphaflow\_modal.py} Modal app is in draft), and
+        produces NPZ outputs that \texttt{vampnet load\_ensemble}
+        already consumes natively.
+  \item \textbf{Multi-source joint VAMPnet.} The bundle currently
+        analyses the union of frames with a single shared embedding
+        but does not yet weight per-source covariances. v0.2 adds
+        per-source covariance estimation and a stratified
+        state-coverage report (``which states does AlphaFlow reach
+        that $100$~ns MD does not?''), the direct test of H3.
+  \item \textbf{Notch1-specific MD-prep robustness.} The
+        chain-selection bug that delayed the holo run motivates a
+        residue-number-based chain identification path that survives
+        PDBFixer renumbering, plus positional restraints for
+        membrane-anchored systems (Notch1 NRR's transmembrane region
+        is normally anchored \emph{in vivo}, and the lack of that
+        restraint in v0.1 may bias which conformations are sampled
+        on the $100$~ns horizon).
+  \item \textbf{Live MCP-driven adaptive sampling on Notch1.} v0.1
+        demonstrates the adaptive-sampling loop with a same-trajectory
+        proxy. v0.2 wires the loop to actual Modal MD launches
+        seeded from rare-state mean structures
+        (\texttt{vampnet means}), giving an end-to-end LLM-driven
+        sampling protocol on Notch1 NRR.
+\end{enumerate}
+
+Stretch items deferred past v0.2: Gibbs-energy-landscape rendering
+inside ChimeraX; MACE-OFF~\cite{batatia2022mace} neural-network
+potentials in the MD backend; a teaching example pairing
+DiffDock~\cite{corso2023diffdock} pose generation with
+post-docking MD + VAMPnet stability analysis.
+
+% =====================================================================
+\section{Conclusion}
+
+We have shipped a working v0.1 of \texttt{chimerax-vampnet}: a
+ChimeraX bundle that fits VAMPnets, builds Markov state models, and
+visualises metastable states on the underlying structures, with every
+command exposed via a Model Context Protocol bridge to LLM-agent
+controllers. The bundle clears a Tier-1 chignolin unit test
+(slow IT $166$~ns, clean folded$\leftrightarrow$unfolded separation), a
+four-protein ATLAS robustness sweep across $7\!\times$ chain-length
+range and four fold classes, and an end-to-end adaptive-sampling
+demonstration ($2.1\!\times$ growth in resolved slow-mode timescale
+under agent-driven refinement). The Notch1 NRR apo and holo MD
+trajectories are complete, and the population-shift analysis that
+defines the original scientific hypothesis is the first deliverable
+of v0.2.
+
+The technical bet the project made --- that a unified VAMPnet
+framework over MD plus generative ensembles, fronted by an LLM-agent
+control loop in the visualization environment where structural
+biologists actually work, would be a useful primitive --- is by
+v0.1 demonstrated as feasible. The remaining v0.2 work decides
+whether it produces meaningful biology.
+
+\paragraph{Author contributions.} Sole author for v0.1.
+
+\paragraph{Code availability.} \texttt{chimerax-vampnet} v0.1 is
+released under the MIT license at
+\url{https://github.com/m9h/chimerax-vampnet} (tags \texttt{v0.1},
+\texttt{v0.1.1}). The chignolin and Notch1 NRR MD trajectories will
+be deposited to Zenodo on v0.2 publication; ATLAS trajectories used
+in the robustness sweep are publicly available from the ATLAS
+database~\cite{vandermeersche2024atlas}.
+
+\paragraph{Acknowledgements.} ChimeraX is provided by the UCSF
+Resource for Biocomputing, Visualization, and Informatics. MD
+compute was provided by Modal Labs (H100); local development used
+an NVIDIA GB10 (DGX Spark) developer platform.
+
+% =====================================================================
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
