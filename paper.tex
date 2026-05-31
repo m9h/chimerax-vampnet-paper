@@ -778,6 +778,30 @@ potentials in the MD backend; a teaching example pairing
 DiffDock~\cite{corso2023diffdock} pose generation with
 post-docking MD + VAMPnet stability analysis.
 
+\paragraph{MarS-FM as a v0.4 ensemble source.} The concurrent
+MarS-FM work~\cite{kapusniak2025marsfm} learns flow-matching
+transitions in MSM state space and generates protein-dynamics
+trajectories $\sim$600$\times$ faster than explicit-solvent MD
+($\sim$30 s for 500 conformations of a 159-residue protein on a
+single H100, vs $\sim$5 h for the equivalent classical sampling).
+MarS-FM beats BioEmu~\cite{lewis2026bioemu} on ensemble metrics
+(pairwise RMSD correlation 0.65 vs 0.25; gyration-radius JSD 0.10
+vs 0.40; $\Delta G_\mathrm{fold}$ MAE 1.05 vs 4.67 kcal/mol on the
+MD-Cath test set) and is methodologically aligned with our bundle
+(MarS-FM \emph{generates} MSM trajectories; \texttt{vampnet}
+\emph{analyses} them). At Notch1 NRR scale ($\sim$234 CAs) the
+inference cost would drop from $\sim$\$70 per replica to
+$\sim$\$0.05 --- three orders of magnitude. As of this writing the
+official MarS-FM checkpoint has not been released; v0.4 adds a
+\texttt{vampnet load\_ensemble \dots source marsfm} loader (the
+stub is already wired in v0.2.1 for \texttt{.npz}- or PDB-directory
+outputs) and re-runs the H3 multi-source coverage test with
+MarS-FM as a fourth ensemble source alongside MD, AlphaFlow, and
+BioEmu. The Notch1 NRR membrane-anchor artifact persists with any
+generative method trained on unrestrained MD-Cath trajectories;
+the COM-distance restraint from v0.3 stays in place either way as
+the H2 reference.
+
 % =====================================================================
 \section{Conclusion}
 
