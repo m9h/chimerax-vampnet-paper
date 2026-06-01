@@ -692,7 +692,7 @@ Notch1 apo/holo H2 analysis (v0.2 no-restraint)              & \checkmark v0.2, 
 NEC--NTM COM-distance restraint (working)                    & \checkmark v0.3, $2026$-$06$-$01$, replaces per-atom anchor \\
 Notch1 NRR apo + holo MD with COM restraint                  & \checkmark v0.3, $3 \times 100$ ns each \\
 Notch1 apo/holo H2 analysis (v0.3 restrained)                & \checkmark v0.3, direction met ($+3.8$ pp); magnitudes blocked by sampling horizon \\
-MarS-FM ensemble integration (H3 + magnitude estimator)      & v0.4 (checkpoint pending) \\
+MarS-FM ensemble integration (H3 + magnitude estimator)      & v0.4 (checkpoint released 2026-04-16, \texttt{github.com/valence-labs/mars-fm} + \texttt{huggingface.co/valencelabs/mars-fm}) \\
 AlphaFlow + BioEmu real ensembles (H3)                       & v0.4 \\
 Tutorial \texttt{.cxc} scripts (chignolin)                   & \checkmark \texttt{examples/} \\
 GitHub releases (\texttt{v0.1}, \texttt{v0.1.1})             & \checkmark \\
@@ -780,15 +780,26 @@ in priority order:
         the ensemble metrics that matter for H3 (pairwise RMSD
         correlation 0.65 vs 0.25; gyration-radius JSD 0.10 vs 0.40;
         $\Delta G_\mathrm{fold}$ MAE 1.05 vs 4.67 kcal/mol). The
-        official checkpoint is not yet released, but a
+        official checkpoint was released 2026-04-16 at
+        \texttt{github.com/valence-labs/mars-fm} (MIT) with the
+        MD-Cath~450 weights on
+        \texttt{huggingface.co/valencelabs/mars-fm}. The
         \texttt{vampnet load\_ensemble \dots source marsfm} loader
-        stub is wired in v0.3 for \texttt{.npz} or
-        PDB-directory outputs; v0.4 runs MarS-FM on the Notch1 NRR
-        apo and holo sequences and feeds the resulting ensembles
-        into the existing VAMPnet pipeline. The membrane-anchor
-        artifact applies equally to any generative method trained
-        on unrestrained MD-Cath data; the v0.3 COM-distance
-        restraint stays as the classical-MD reference.
+        stub wired in v0.3 already consumes the PDB/XTC outputs
+        natively. v0.4 ships a Modal adapter
+        (\texttt{md/marsfm\_modal.py}) that pulls the HuggingFace
+        checkpoint, converts our Notch1 NRR equilibrated PDBs into
+        the \texttt{atom14} numpy format MarS-FM's
+        \texttt{scripts/generate.py} expects, runs inference, and
+        feeds the resulting ensembles into the existing VAMPnet
+        pipeline. The membrane-anchor artifact applies equally to
+        any generative method trained on unrestrained MD-Cath data;
+        the v0.3 COM-distance restraint stays as the classical-MD
+        reference. Notch1 NRR (234 NEC + 60 NTM CAs for the apo
+        construct, 230 NRR + 431 Fab CAs for the holo) is within the
+        MD-Cath~450 training distribution for the apo arm and
+        slightly outside it for the holo complex, making the holo
+        a stress-test of MarS-FM's generalization to bound systems.
   \item \textbf{Bootstrap uncertainty on the H2 populations.} Use
         \textsc{deeptime}'s bootstrap MSM to put a confidence
         interval on each P(auto-inhibited) so the $\Delta = +3.8$
