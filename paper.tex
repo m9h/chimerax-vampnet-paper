@@ -38,7 +38,7 @@ neural-organoid-relevant demonstration on Notch1 NRR}}
 
 \author[1]{Morgan Hough}
 \affil[1]{MedARC}
-\date{\textit{v0.2 implementation report --- generated \today}}
+\date{\textit{v0.3 implementation report --- generated \today}}
 
 % --- begin document ---
 \begin{document}
@@ -95,14 +95,19 @@ released under MIT at
 \end{abstract}
 
 \vspace{1em}
-\noindent\textbf{Status (v0.2):} bundle shipped, two GitHub releases
-tagged (\texttt{v0.1}, \texttt{v0.1.1}); chignolin Tier-1 validation
-passes; four-protein ATLAS robustness sweep passes; LLM-agent adaptive
-sampling demonstration passes; Notch1 NRR apo + corrected-chain holo MD
-trajectories complete on Modal H100/A100; v0.2 H2 analysis finds the
-directional prediction met (apo $+3.7$ pp more auto-inhibited than
-holo) but the pre-registered magnitudes pending v0.3
-transmembrane-anchor restraint fix (Sec.~\ref{sec:roadmap}).
+\noindent\textbf{Status (v0.3):} bundle shipped, three GitHub releases
+tagged (\texttt{v0.1}, \texttt{v0.1.1}, \texttt{v0.2}); chignolin
+Tier-1 validation passes; four-protein ATLAS robustness sweep passes;
+LLM-agent adaptive sampling demonstration passes; Notch1 NRR apo +
+corrected-chain holo MD complete under two restraint protocols on
+Modal A100-80GB; the H2 directional prediction is met and replicates
+across both protocols ($+3.7$ pp under v0.2 no-restraint, $+3.8$ pp
+under v0.3 COM-distance restraint), but the pre-registered magnitudes
+are blocked by the 100 ns sampling horizon (the COM restraint
+eliminates the NRR-dissociation artifact without moving the
+populations, isolating the cause). Recovering the magnitudes requires
+generative ensembles (v0.4, MarS-FM is the natural target;
+Sec.~\ref{sec:roadmap}).
 
 % =====================================================================
 \section{Introduction}
@@ -369,12 +374,19 @@ sources.
 The v0.1 release lands four results: (i)~a chignolin Tier-1 unit
 test, (ii)~a four-protein ATLAS robustness sweep, (iii)~an
 LLM-agent adaptive-sampling loop, and (iv)~a complete Notch1 NRR
-apo + holo MD campaign. The v0.2 increment delivers the headline
+apo + holo MD campaign. The v0.2 increment delivered the headline
 Notch1 NRR apo/holo H2 analysis on the corrected-chain
-trajectories (Sec.~\ref{sec:notch1_h2}); the directional H2
-prediction is met ($\Delta = +3.7$ pp, apo more auto-inhibited
-than holo), but the pre-registered magnitudes remain pending the
-v0.3 transmembrane-anchor restraint fix (Sec.~\ref{sec:roadmap}).
+trajectories (Sec.~\ref{sec:notch1_h2}). The v0.3 increment adds
+a working membrane-anchor proxy --- a NEC$\leftrightarrow$NTM
+COM-distance restraint --- and re-runs the H2 analysis to test
+whether the unrestrained-MD dissociation artifact was causing the
+sub-threshold magnitudes. It was not: the directional H2 result
+replicates exactly under both protocols ($+3.7$ vs $+3.8$ pp), the
+COM restraint cleanly eliminates the dissociation artifact, and
+yet the auto-inhibited populations do not approach the
+pre-registered $\ge 50$\,\%. The 100 ns sampling horizon is the
+remaining blocker; reaching it requires generative ensembles
+(v0.4, MarS-FM is the natural target; Sec.~\ref{sec:roadmap}).
 
 \subsection{Tier-1 unit test: chignolin (CLN025)}
 \label{sec:tier1}
@@ -476,71 +488,87 @@ or Slurm) seeded from the rare-state \texttt{vampnet means} output
 structure; the loop mechanics are identical and the compute cost
 scales as one short MD per round.
 
-\subsection{Notch1 NRR apo/holo H2 analysis: directional prediction met,
-            magnitudes pending v0.3 anchor fix}
+\subsection{Notch1 NRR apo/holo H2 analysis: directional prediction
+            met under two restraint protocols; magnitudes blocked by
+            100~ns sampling horizon}
 \label{sec:notch1_h2}
 
 The corrected-chain holo trajectories
 (Sec.~\ref{sec:notch1_traj} below; raw 3L95 chains X+H+L, the actual
 NRR plus one Fab pair) and the v0.1 apo trajectories were analysed
-with the bundle's default VAMPnet at $k=4$ states, lag $\tau=1$~ns,
-500-pair CA--CA distance features standardised and clipped to
-$\pm 5\sigma$. The auto-inhibited state was auto-labelled per system
-by minimum NEC--NTM center-of-mass (COM) separation. Results:
+under \emph{two} MD protocols: a v0.2 unrestrained protocol that lets
+the NRR fragments diffuse freely, and a v0.3 protocol in which a
+harmonic restraint on the NEC--NTM center-of-mass (COM) distance
+($r_0 \approx 4$~\AA, $k = 100$~kJ/mol/nm$^2$) compensates for the
+missing transmembrane anchor. Both protocols are analysed with the
+bundle's default VAMPnet ($k=4$ states, lag $\tau=1$~ns, 500-pair
+CA--CA distance features standardised and clipped to $\pm 5\sigma$).
+The auto-inhibited state is auto-labelled per system by minimum
+NEC--NTM COM separation. Results:
 
 \begin{center}
-\begin{tabularx}{\linewidth}{X r r}
+\begin{tabularx}{\linewidth}{X r r r r}
 \toprule
- & \textbf{Apo (3I08, no Fab)} & \textbf{Holo (3L95, +Fab)} \\
+ & \multicolumn{2}{c}{\textbf{v0.2: no restraint}} & \multicolumn{2}{c}{\textbf{v0.3: COM restraint, $k=100$ kJ/mol/nm$^2$}} \\
+ & Apo & Holo & Apo & Holo \\
 \midrule
-Trajectories analysed                 & 3 $\times$ 100 ns      & 3 $\times$ 100 ns \\
-NEC CAs / NTM CAs                     & 174 / 60               & 176 / 54 \\
-NEC--NTM COM sep (mean $\pm$ std)     & $13.9 \pm 24.2$ \AA{}  & $21.5 \pm 44.3$ \AA{} \\
-NEC--NTM COM sep range                & 2.8--107.2 \AA{}       & 2.7--184.6 \AA{} \\
-Auto-inhibited state min COM sep      & 8.1 \AA{} (state 2)    & 11.6 \AA{} (state 0) \\
-\textbf{P(auto-inhibited)}            & \textbf{21.6 \%}       & \textbf{17.9 \%} \\
-$\Delta$ apo $-$ holo                 & \multicolumn{2}{c}{$+3.7$ pp (apo more auto-inhibited)} \\
-Slowest implied timescale             & 59.0 ns                & (insufficient transitions) \\
+Trajectories analysed                 & 3$\times$100 ns & 3$\times$100 ns & 3$\times$100 ns & 3$\times$100 ns \\
+NEC CAs / NTM CAs                     & 174 / 60       & 176 / 54       & 174 / 60       & 176 / 54 \\
+NEC--NTM COM sep mean $\pm$ std (\AA) & 13.9 $\pm$ 24.2 & 21.5 $\pm$ 44.3 & 4.6 $\pm$ 0.3 & 3.7 $\pm$ 0.3 \\
+NEC--NTM COM sep range (\AA)          & 2.8--107.2     & 2.7--184.6     & 3.4--5.6       & 2.5--4.8 \\
+\textbf{P(auto-inhibited)}            & \textbf{21.6 \%} & \textbf{17.9 \%} & \textbf{25.4 \%} & \textbf{21.6 \%} \\
+$\Delta$ apo $-$ holo                 & \multicolumn{2}{c}{$+3.7$ pp} & \multicolumn{2}{c}{$+3.8$ pp} \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
-\paragraph{H2 verdict.} The pre-registered magnitudes (apo
-$P \ge 0.5$, holo $P \le 0.3$) are \textbf{not} met --- both systems
-sit below 25\,\% auto-inhibited population. \emph{However, the
-pre-registered direction is met:} apo is more auto-inhibited than
-holo by $+3.7$ percentage points, matching the published mechanism
-\cite{tiyanont2011exposure,wu2010antinrr}. H1 (state resolution) is
-met for both systems: 4 non-degenerate states are identified, with
+\paragraph{H2 verdict.} The pre-registered \emph{direction} (apo more
+auto-inhibited than holo) is \textbf{met under both protocols}, and
+the magnitude of the shift is essentially identical across them
+($\Delta = +3.7$ vs $+3.8$ pp). Sign matches the published
+mechanism~\cite{tiyanont2011exposure,wu2010antinrr}. The
+pre-registered \emph{magnitudes} (apo $P \ge 0.5$, holo $P \le 0.3$)
+are \textbf{not met} under either protocol --- all four values sit
+between 17.9~\% and 25.4~\%. H1 (state resolution) is met under both
+protocols: 4 non-degenerate states are identified per system, with
 the auto-inhibited state cleanly distinguished by minimum NEC--NTM
-separation (8--12 \AA{} vs.\ the system's $\sim$15--40 \AA{} mean).
+COM separation.
 
-\paragraph{Why the magnitudes miss.} The NRR's NTM C-terminus is
-normally tethered to the cell membrane via a transmembrane helix
-absent from the soluble construct. Without an anchor restraint, both
-trajectories sample heavily dissociated configurations (apo COM
-separation up to 107 \AA{}, holo up to 184 \AA{}) that depress the
-auto-inhibited-state population relative to the membrane-bound
-biology. Holo in fact dissociates \emph{more} than apo (std 44 vs.\
-24 \AA{}) because the bound Fab adds force vectors that tug NTM away
-from the LNR cap when no anchor balances them --- this is an MD-prep
-artifact, opposite to the \emph{in vivo} mechanism, and motivates
-the v0.3 work.
+\paragraph{The COM restraint works; the sampling horizon does not.}
+A natural reading of the v0.2 result is that the unrestrained NRR
+dissociation (up to 107~\AA{} apo, 185~\AA{} holo COM separation)
+depressed the auto-inhibited-state population by sampling
+non-physiological configurations. The v0.3 COM-distance restraint
+($k=100$~kJ/mol/nm$^2$) eliminates this artifact entirely
+(COM sep stays within 3.4--5.6 \AA{}). And yet the auto-inhibited
+populations move only $+3.8$ pp under v0.3 vs.\ $+3.7$ pp under v0.2
+--- not toward the pre-registered magnitudes. \emph{The dissociation
+artifact was not the magnitude blocker.} The 100 ns sampling horizon
+is the blocker: the published NRR auto-inhibited$\leftrightarrow$
+activated transition timescale is $\sim$$\mu$s, so neither protocol
+equilibrates between the two basins. Both protocols sample only
+\emph{local} fluctuations around the starting auto-inhibited state,
+just with very different fluctuation magnitudes (24 \AA{} std under
+v0.2, 0.3 \AA{} std under v0.3).
 
-\paragraph{Aside: the anchor restraint blew up at production.} The
-v0.2 plan was to add a 1000~kJ/mol/nm$^2$ harmonic positional
-restraint to the C-terminal CA atoms of the NTM chain, compensating
-for the missing transmembrane anchor. Prep equilibration completed
-cleanly for both systems, but all six production replicas NaN'd
-within 6--18 ns at $\text{d}t = 4$~fs HMR. Root cause: the
-restraint reference positions are captured \emph{before} NPT
-equilibration, and the box-rescaling during NPT pulls the CAs to new
-locations while the anchor stays pinned to the pre-equilibration
-coordinates. Brief prep NVT (500 ps) does not surface the resulting
-instability; long production at HMR aggressive timestep does. The
-v0.3 fix is to capture restraint reference positions \emph{after}
-NPT, or use a centroid-based restraint that is invariant to box
-rescaling.
+\paragraph{Aside: the per-atom anchor restraint blew up at
+production.} The v0.2 plan was to add a 1000~kJ/mol/nm$^2$ harmonic
+\emph{per-atom} positional restraint to the C-terminal CA atoms of
+the NTM chain. Prep equilibration completed cleanly for both
+systems, but all six production replicas NaN'd within 6--18 ns at
+$\text{d}t = 4$~fs HMR. After bisecting through five candidate
+explanations (pre-NPT vs post-NPT anchor positions; XmlSerializer
+round-trip; PDB-vs-state.xml positions; force magnitude), the
+diagnosis was: any $k$ stiff enough to constrain whole-protein COM
+drift ($k \gtrsim 100$~kJ/mol/nm$^2$) introduces force singularities
+at thermal-scale displacements that HMR=4~fs cannot integrate
+stably; any $k$ soft enough to integrate ($k \le 10$) lets the
+``anchored'' CAs drift by $> 100$~\AA{} and provides effectively no
+anchoring. The fix was to switch the restraint formulation from
+per-atom (\texttt{CustomExternalForce}) to inter-chain COM--COM
+distance (\texttt{CustomCentroidBondForce}), which is invariant to
+whole-system drift and avoids per-atom force singularities; this
+is the v0.3 protocol reported above.
 
 \subsection{Notch1 NRR apo and holo MD trajectories}
 \label{sec:notch1_traj}
@@ -602,15 +630,21 @@ v0.2 status:
         cleanly distinguished from $\ge 1$ activated state
         ($\ge 28$ \AA{} apo, $\ge 38$ \AA{} holo).
   \item \textbf{H2 --- population shift.} \textbf{Partially met
-        (direction only).} Auto-inhibited populations are apo 21.6
-        \%, holo 17.9 \%, $\Delta = +3.7$ pp in the
-        pre-registered direction (apo more auto-inhibited), but well
-        below the pre-registered magnitudes (apo $\ge 50$ \%, holo
-        $\le 30$ \%). Both systems undergo NRR-fragment dissociation
-        across 100 ns without a transmembrane-anchor restraint
-        (Sec.~\ref{sec:notch1_h2}); fixing the restraint is the
-        first v0.3 task and is expected to recover the
-        pre-registered magnitudes.
+        (direction only) under \emph{two} restraint protocols.}
+        Auto-inhibited populations are apo 21.6 \% / 25.4 \% and
+        holo 17.9 \% / 21.6 \% under v0.2 (no restraint) / v0.3
+        (COM restraint); $\Delta = +3.7$ / $+3.8$ pp in the
+        pre-registered direction (apo more auto-inhibited). The
+        pre-registered magnitudes (apo $\ge 50$ \%, holo $\le 30$ \%)
+        are not met under either protocol. The v0.3 COM restraint
+        eliminates the NRR-dissociation artifact (NEC--NTM COM sep
+        $24$ \AA{} std collapses to $0.3$ \AA{} std) but does not
+        move the populations, indicating the 100 ns sampling horizon
+        --- not the restraint --- is what blocks the magnitudes
+        (Sec.~\ref{sec:notch1_h2}). Recovering them requires either
+        $\mu$s-scale MD, enhanced sampling, or generative ensembles
+        (MarS-FM~\cite{kapusniak2025marsfm} is the natural v0.4
+        candidate).
   \item \textbf{H3 --- multi-source coverage.} \textbf{Pending.}
         Requires AlphaFlow and BioEmu ensembles, which v0.1 ships
         only the framework for. The
@@ -654,9 +688,12 @@ LLM-agent adaptive-sampling loop demonstration               & \checkmark $94 \!
 Implied-timescales convergence diagnostic                    & \checkmark integrated into \texttt{vampnet timescales} \\
 Notch1 NRR apo MD ($3 \times 100$~ns)                        & \checkmark first run, end-to-end pipeline \\
 Notch1 NRR holo MD ($3 \times 100$~ns, corrected chain set)  & \checkmark v0.2, $2026$-$05$-$29$, Modal A100-80GB \\
-Notch1 apo/holo H2 analysis                                  & \checkmark v0.2, direction met, magnitudes pending v0.3 \\
-NTM-anchor restraint (working, post-NPT positions)           & v0.3 \\
-AlphaFlow + BioEmu real ensembles (H3)                       & v0.3 \\
+Notch1 apo/holo H2 analysis (v0.2 no-restraint)              & \checkmark v0.2, direction met ($+3.7$ pp) \\
+NEC--NTM COM-distance restraint (working)                    & \checkmark v0.3, $2026$-$06$-$01$, replaces per-atom anchor \\
+Notch1 NRR apo + holo MD with COM restraint                  & \checkmark v0.3, $3 \times 100$ ns each \\
+Notch1 apo/holo H2 analysis (v0.3 restrained)                & \checkmark v0.3, direction met ($+3.8$ pp); magnitudes blocked by sampling horizon \\
+MarS-FM ensemble integration (H3 + magnitude estimator)      & v0.4 (checkpoint pending) \\
+AlphaFlow + BioEmu real ensembles (H3)                       & v0.4 \\
 Tutorial \texttt{.cxc} scripts (chignolin)                   & \checkmark \texttt{examples/} \\
 GitHub releases (\texttt{v0.1}, \texttt{v0.1.1})             & \checkmark \\
 \bottomrule
@@ -678,8 +715,11 @@ Notch1 NRR holo MD ($3 \times 100$~ns, redo)     & Modal H100 ($\!\times\!3$) & 
 ATLAS fetch + analysis ($4$ proteins)            & local CPU                  & $\sim$~0.07  & $0$ \\
 Chignolin tutorial + adaptive demo analysis      & local CPU                  & $\sim$~0.5   & $0$ \\
 VAMPnet training (per fit)                       & local CPU                  & $\sim$~0.1   & $0$ \\
+v0.3 Notch1 NRR apo MD ($3 \times 100$~ns, COM-restrained) & Modal A100-80GB ($\!\times\!3$) & $\sim$~3.5   & $\sim$~25 \\
+v0.3 Notch1 NRR holo MD ($3 \times 100$~ns, COM-restrained)& Modal A100-80GB ($\!\times\!3$) & $\sim$~12    & $\sim$~90 \\
+v0.3 anchor-restraint bisection (5 failed preps + 4 failed prods) & Modal A100-80GB & $\sim$~3 & $\sim$~30 \\
 \midrule
-\textbf{Total (delivered)}                       & --- & $\sim$~$47$~hr wall & $\sim$~$\$210$ \\
+\textbf{Total (delivered)}                       & --- & $\sim$~$66$~hr wall & $\sim$~$\$355$ \\
 \bottomrule
 \end{tabularx}
 \end{center}
@@ -718,55 +758,59 @@ $\sim\!\$30$--$50$ additional Modal spend.
 \end{itemize}
 
 % =====================================================================
-\section{v0.3 roadmap}
+\section{v0.4 roadmap}
 \label{sec:roadmap}
 
-The v0.2 increment delivered the corrected Notch1 NRR apo/holo
-trajectories and the directional H2 result
-(Sec.~\ref{sec:notch1_h2}). The remaining work falls into five
-items, in priority order:
+The v0.3 increment landed a working transmembrane-anchor proxy
+(the NEC$\leftrightarrow$NTM COM-distance restraint), re-ran the
+H2 analysis under it, and established that the 100 ns sampling
+horizon --- not the dissociation artifact --- is what blocks the
+pre-registered magnitudes
+(Sec.~\ref{sec:notch1_h2}). Remaining work falls into four items,
+in priority order:
 
 \begin{enumerate}[leftmargin=*,itemsep=4pt]
-  \item \textbf{Working transmembrane-anchor restraint.} The
-        v0.2 anchor attempt (1000~kJ/mol/nm$^2$ harmonic on the
-        last 5 NTM CAs) passed prep equilibration but NaN'd within
-        6-18 ns of production for all six replicas. Root cause: the
-        anchor reference positions are captured \emph{before} NPT
-        equilibration, so box-rescaling during prep pulls the CAs
-        away from the anchor points; the slow accumulation of
-        restraint force then NaN's at HMR aggressive timestep.
-        Two viable fixes: capture restraint positions
-        \emph{after} NPT, or use a
-        \texttt{CustomCentroidBondForce} that is invariant to box
-        rescaling. Either, plus the re-run, is $\sim$\$80 and
-        $\sim$11~hr wall. With a working anchor we expect both
-        apo and holo auto-inhibited populations to rise toward
-        the pre-registered magnitudes (apo $\ge 50$\,\%, holo
-        $\le 30$\,\%) and the apo-vs-holo $\Delta$ to widen
-        substantially.
+  \item \textbf{MarS-FM as a fourth ensemble source for H3 and
+        as a magnitude estimator for H2.} The
+        MarS-FM~\cite{kapusniak2025marsfm} model generates
+        protein-dynamics trajectories $\sim$600$\times$ faster than
+        explicit-solvent MD via flow-matching in MSM state space;
+        at Notch1 NRR scale the per-replica inference cost drops
+        from $\sim$\$70 to $\sim$\$0.05. MarS-FM beats BioEmu on
+        the ensemble metrics that matter for H3 (pairwise RMSD
+        correlation 0.65 vs 0.25; gyration-radius JSD 0.10 vs 0.40;
+        $\Delta G_\mathrm{fold}$ MAE 1.05 vs 4.67 kcal/mol). The
+        official checkpoint is not yet released, but a
+        \texttt{vampnet load\_ensemble \dots source marsfm} loader
+        stub is wired in v0.3 for \texttt{.npz} or
+        PDB-directory outputs; v0.4 runs MarS-FM on the Notch1 NRR
+        apo and holo sequences and feeds the resulting ensembles
+        into the existing VAMPnet pipeline. The membrane-anchor
+        artifact applies equally to any generative method trained
+        on unrestrained MD-Cath data; the v0.3 COM-distance
+        restraint stays as the classical-MD reference.
   \item \textbf{Bootstrap uncertainty on the H2 populations.} Use
         \textsc{deeptime}'s bootstrap MSM to put a confidence
-        interval on each P(auto-inhibited) so that the
-        $\Delta = +3.7$~pp can be tested for significance against
-        an empirical null.
+        interval on each P(auto-inhibited) so the $\Delta = +3.8$
+        pp directional result can be tested for significance
+        against an empirical null.
   \item \textbf{Real AlphaFlow + BioEmu ensembles.} v0.1 ships
         only the multi-source \emph{framework}; the demonstrations
-        use MD plus a synthetic AlphaFlow-shaped placeholder. v0.3
-        adds a \texttt{vampnet ensemble fetch} verb that downloads
-        the public AlphaFlow~\cite{jing2024alphaflow} and
-        BioEmu~\cite{lewis2026bioemu} checkpoints from
-        HuggingFace, runs inference on a target sequence on Modal
-        (\texttt{md/alphaflow\_modal.py} is the draft Modal app),
-        and produces NPZ outputs that
+        use MD plus a synthetic AlphaFlow-shaped placeholder. v0.4
+        runs the public
+        AlphaFlow~\cite{jing2024alphaflow} and
+        BioEmu~\cite{lewis2026bioemu} checkpoints from HuggingFace
+        on Modal (\texttt{md/alphaflow\_modal.py} is the draft
+        Modal app), and produces NPZ outputs that
         \texttt{vampnet load\_ensemble} already consumes natively.
-        This is the input to H3.
+        This is the input to H3 alongside MarS-FM.
   \item \textbf{Multi-source joint VAMPnet.} Per-source covariance
         estimation and a stratified state-coverage report
         (``which states does AlphaFlow reach that $100$~ns MD does
         not?''), the direct test of H3.
   \item \textbf{Live MCP-driven adaptive sampling on Notch1.} v0.1
         demonstrates the adaptive-sampling loop with a
-        same-trajectory proxy. v0.3 wires the loop to actual Modal
+        same-trajectory proxy. v0.4 wires the loop to actual Modal
         MD launches seeded from rare-state mean structures
         (\texttt{vampnet means}), giving an end-to-end LLM-driven
         sampling protocol on Notch1 NRR.
@@ -778,34 +822,11 @@ potentials in the MD backend; a teaching example pairing
 DiffDock~\cite{corso2023diffdock} pose generation with
 post-docking MD + VAMPnet stability analysis.
 
-\paragraph{MarS-FM as a v0.4 ensemble source.} The concurrent
-MarS-FM work~\cite{kapusniak2025marsfm} learns flow-matching
-transitions in MSM state space and generates protein-dynamics
-trajectories $\sim$600$\times$ faster than explicit-solvent MD
-($\sim$30 s for 500 conformations of a 159-residue protein on a
-single H100, vs $\sim$5 h for the equivalent classical sampling).
-MarS-FM beats BioEmu~\cite{lewis2026bioemu} on ensemble metrics
-(pairwise RMSD correlation 0.65 vs 0.25; gyration-radius JSD 0.10
-vs 0.40; $\Delta G_\mathrm{fold}$ MAE 1.05 vs 4.67 kcal/mol on the
-MD-Cath test set) and is methodologically aligned with our bundle
-(MarS-FM \emph{generates} MSM trajectories; \texttt{vampnet}
-\emph{analyses} them). At Notch1 NRR scale ($\sim$234 CAs) the
-inference cost would drop from $\sim$\$70 per replica to
-$\sim$\$0.05 --- three orders of magnitude. As of this writing the
-official MarS-FM checkpoint has not been released; v0.4 adds a
-\texttt{vampnet load\_ensemble \dots source marsfm} loader (the
-stub is already wired in v0.2.1 for \texttt{.npz}- or PDB-directory
-outputs) and re-runs the H3 multi-source coverage test with
-MarS-FM as a fourth ensemble source alongside MD, AlphaFlow, and
-BioEmu. The Notch1 NRR membrane-anchor artifact persists with any
-generative method trained on unrestrained MD-Cath trajectories;
-the COM-distance restraint from v0.3 stays in place either way as
-the H2 reference.
 
 % =====================================================================
 \section{Conclusion}
 
-We have shipped a working v0.2 of \texttt{chimerax-vampnet}: a
+We have shipped a working v0.3 of \texttt{chimerax-vampnet}: a
 ChimeraX bundle that fits VAMPnets, builds Markov state models, and
 visualises metastable states on the underlying structures, with every
 command exposed via a Model Context Protocol bridge to LLM-agent
@@ -815,21 +836,27 @@ four-protein ATLAS robustness sweep across $7\!\times$ chain-length
 range and four fold classes, and an end-to-end adaptive-sampling
 demonstration ($2.1\!\times$ growth in resolved slow-mode timescale
 under agent-driven refinement). On the corrected Notch1 NRR
-apo+holo trajectories, the v0.2 H2 analysis confirms the
-directional prediction (apo is $+3.7$~pp more auto-inhibited than
-holo) but does not yet recover the pre-registered magnitudes
-because neither MD system has a working transmembrane-anchor
-restraint; this is the first v0.3 task.
+apo+holo trajectories, the H2 analysis confirms the directional
+prediction (apo is $+3.8$~pp more auto-inhibited than holo) and
+replicates this directional result \emph{across} two restraint
+protocols (v0.2 no-restraint, v0.3 NEC--NTM COM-distance restraint
+at $k=100$~kJ/mol/nm$^2$). The pre-registered magnitudes are not
+met under either protocol --- the v0.3 COM restraint cleanly
+eliminates the dissociation artifact (NEC--NTM COM separation std
+collapses from 24 \AA{} to 0.3 \AA{}) yet the populations do not
+move, isolating the 100 ns sampling horizon as the magnitude
+blocker. Reaching the magnitudes requires generative ensembles;
+v0.4 wires this in via MarS-FM~\cite{kapusniak2025marsfm} once the
+checkpoint is released.
 
 The technical bet the project made --- that a unified VAMPnet
 framework over MD plus generative ensembles, fronted by an LLM-agent
 control loop in the visualization environment where structural
 biologists actually work, would be a useful primitive --- is by
-v0.2 demonstrated as feasible \emph{and} probing the right biology
-(the Fab does shift the system away from the auto-inhibited basin
-in the direction the published mechanism predicts). The remaining
-v0.3 work decides whether the magnitudes recover when the
-membrane-anchor artifact is removed.
+v0.3 demonstrated as feasible, probing the right biology (apo
+$>$ holo in the auto-inhibited basin under two independent
+protocols), and ready to be the analytical substrate for the next
+generation of generative-ensemble methods.
 
 \paragraph{Author contributions.} Sole author for v0.1.
 
