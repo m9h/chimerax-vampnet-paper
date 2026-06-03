@@ -38,7 +38,7 @@ neural-organoid-relevant demonstration on Notch1 NRR}}
 
 \author[1]{Morgan Hough}
 \affil[1]{MedARC}
-\date{\textit{v0.3 implementation report --- generated \today}}
+\date{\textit{v0.4 implementation report --- generated \today}}
 
 % --- begin document ---
 \begin{document}
@@ -95,19 +95,25 @@ released under MIT at
 \end{abstract}
 
 \vspace{1em}
-\noindent\textbf{Status (v0.3):} bundle shipped, three GitHub releases
-tagged (\texttt{v0.1}, \texttt{v0.1.1}, \texttt{v0.2}); chignolin
-Tier-1 validation passes; four-protein ATLAS robustness sweep passes;
-LLM-agent adaptive sampling demonstration passes; Notch1 NRR apo +
-corrected-chain holo MD complete under two restraint protocols on
-Modal A100-80GB; the H2 directional prediction is met and replicates
-across both protocols ($+3.7$ pp under v0.2 no-restraint, $+3.8$ pp
-under v0.3 COM-distance restraint), but the pre-registered magnitudes
-are blocked by the 100 ns sampling horizon (the COM restraint
-eliminates the NRR-dissociation artifact without moving the
-populations, isolating the cause). Recovering the magnitudes requires
-generative ensembles (v0.4, MarS-FM is the natural target;
-Sec.~\ref{sec:roadmap}).
+\noindent\textbf{Status (v0.4):} bundle shipped, four GitHub releases
+tagged (\texttt{v0.1}, \texttt{v0.1.1}, \texttt{v0.2}, \texttt{v0.3});
+chignolin Tier-1 validation passes; four-protein ATLAS robustness sweep
+passes; LLM-agent adaptive sampling demonstration passes (v0.1 proxy)
+plus a live MCP-driven adaptive sampling end-to-end PoC (v0.4) that
+triggers a real Modal MD launch on agent decision; Notch1 NRR apo +
+corrected-chain holo MD complete under two restraint protocols; H2
+directional prediction met ($+3.7$/$+3.8$ pp under both protocols)
+but pre-registered magnitudes blocked by the 100 ns sampling horizon.
+v0.4 adds MarS-FM and BioEmu as additional ensemble sources, with
+**H3 multi-source coverage MET**: state 2 of the joint VAMPnet ($9\,\%$
+of the joint ensemble) is reached only by generative samples
+($96.4\,\%$ from BioEmu, $3\,\%$ from MarS-FM, zero from MD) ---
+direct evidence that generative ensembles surface conformations
+classical 100\,ns MD does not reach. Bootstrap CIs on H2 indicate
+the $+3.8$ pp directional Delta is not statistically significant at
+$n = 3$ replicas (95\,\% CIs overlap). AlphaFlow and Boltz-2
+integration deferred to v0.5 (upstream-dep-stack incompatibilities;
+neither model is on the H3-critical path).
 
 % =====================================================================
 \section{Introduction}
@@ -615,11 +621,11 @@ correctly-structured DCDs that the analysis then surfaced as
 biologically incoherent. The corrected apo+holo trajectories drive
 the H2 analysis in Sec.~\ref{sec:notch1_h2}.
 
-\subsection{Pre-registered hypotheses --- status as of v0.2}
+\subsection{Pre-registered hypotheses --- status as of v0.4}
 \label{sec:hypotheses}
 
 We pre-registered three hypotheses for the apo+holo MD analysis.
-v0.2 status:
+Status as of v0.4:
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
   \item \textbf{H1 --- state resolution.} \textbf{Met.} The VAMPnet
@@ -645,18 +651,40 @@ v0.2 status:
         $\mu$s-scale MD, enhanced sampling, or generative ensembles
         (MarS-FM~\cite{kapusniak2025marsfm} is the natural v0.4
         candidate).
-  \item \textbf{H3 --- multi-source coverage.} \textbf{Pending.}
-        Requires AlphaFlow and BioEmu ensembles, which v0.1 ships
-        only the framework for. The
-        \texttt{md/alphaflow\_modal.py} driver was written in v0.1
-        but not yet executed; v0.3 will run real AlphaFlow + BioEmu
-        inference and report the source-stratified state-coverage
-        table.
+  \item \textbf{H3 --- multi-source coverage.} \textbf{MET (3 of 3
+        sources).} The v0.4 joint VAMPnet was fit on a 1869-frame
+        ensemble combining three sources of Notch1 NEC (174 CAs):
+        classical MD (1500 frames, v0.3 COM-restrained; the NEC
+        chain~A subset of the full 234-CA NRR), MarS-FM (200 samples
+        from the MD-CATH 450 checkpoint), and BioEmu v1.1 (169 samples
+        from \texttt{microsoft/bioemu}). Per-state source breakdown:
+        state 0 ($56\,\%$ pop) and state 3 ($22\,\%$) are MD-only;
+        state 1 ($13\,\%$) is reached by all three sources
+        (MarS-FM-dominated, $97\,\%$); state 2 ($9\,\%$) is
+        \emph{generative-only} ($96.4\,\%$ from BioEmu, $3\,\%$ from
+        MarS-FM, zero from MD). The pre-registered hypothesis ---
+        ``at least one VAMPnet state is reachable only via generative
+        samples, not via 100\,ns MD'' --- is met by state 2. Per-source
+        inference cost on Modal: $\sim$\$0.10 per 200 MarS-FM samples
+        (H100, $\sim$3 min) and $\sim$\$0.50 per 200 BioEmu samples
+        (A100-80GB, $\sim$25 min). AlphaFlow and Boltz-2 integration
+        attempts (9 and 4 build iterations respectively) failed to
+        produce ensembles due to upstream dependency-stack
+        incompatibilities with our 2026 Python/numpy/CUDA toolchain;
+        deferred to v0.5 and not on the H3-critical path since H3 is
+        already met.
 \end{enumerate}
 
-Reporting uncertainty bands (bootstrap MSM, \textsc{deeptime})
-on the H2 populations is deferred to v0.3 when the underlying MD
-sampling is no longer dominated by the dissociation artifact.
+Uncertainty bands on the H2 populations are now available via a
+Bayesian-MSM bootstrap (deeptime, 100 posterior samples) with a
+per-replica block-bootstrap fallback when the MSM collapses to fewer
+states than the VAMPnet found. v0.3 trajectory bootstrap result:
+apo $P(\text{auto-inh.}) = 25.4\,\%$ ($95\,\%$ CI $[0.0\,\%, 43.7\,\%]$),
+holo $= 21.6\,\%$ ($95\,\%$ CI $[0.0\,\%, 64.5\,\%]$). The two CIs
+overlap heavily; the $\Delta = +3.8$ pp directional Delta is \emph{not}
+statistically significant at $n = 3$ replicas. The directional
+result is reproducible across protocols but the $n$ is what's
+limiting.
 
 % =====================================================================
 \section{Implementation, as-built}
