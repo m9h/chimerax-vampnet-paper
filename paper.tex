@@ -716,6 +716,35 @@ Status as of v0.5:
         AlphaFlow's pinned numpy~1.21.2). Each adapter's
         \texttt{modal.Image} is self-contained and documents its
         environment recipe in its module docstring.
+
+        \paragraph{State annotation (v0.6).} Per-state per-source
+        structural features (Rg, end-to-end distance, intra-NEC
+        domain COMs, Kabsch RMSD vs the MD-mean apo reference) ground
+        the statistical 3-way split in interpretable biology. States
+        0 and 3 are two sub-basins of the same auto-inhibited
+        equilibrium (Rg $18.9$~\AA, NEC--NTM COM $4.6$--$4.7$~\AA,
+        right on top of the v0.3 restraint set point of $3.94$~\AA)
+        distinguished only by NEC end-to-end distance ($18$~\AA{} vs
+        $24$~\AA). State 1 is reached by AlphaFlow and Boltz-2 via
+        \emph{different} structural routes that share a tighter
+        LNR-A $\to$ HD-N packing ($22$--$24$~\AA{} vs MD's $27$~\AA):
+        Boltz-2 collapses (Rg $16.8$~\AA, $\sim$2~\AA{} below the MD
+        mean), AlphaFlow shortens the end-to-end distance to
+        $15$~\AA. The shared signal is a Fab-bound-like contraction
+        of the inhibitory contact even though neither model is
+        conditioned on Fab. State 2 is the highest-variance state:
+        MarS-FM's end-to-end distance is $35.6 \pm 14.3$~\AA{} (std
+        nearly twice the MD mean) and its Kabsch RMSD vs the MD mean
+        is $13.8 \pm 3.5$~\AA, the largest of any source $\times$
+        state combination --- flow-matching in MSM state space
+        genuinely reaches a different part of the landscape than
+        MD's $100$ ns horizon. Boltz-2 also exhibits a systematic
+        compactness bias across both states it occupies (Rg
+        $16.8$--$17.3$~\AA{} vs MD's $18.9$~\AA), predictable from
+        its PDB-structure training distribution. The full feature
+        breakdown and per-source per-state scatter figure are at
+        \texttt{md/notch1\_h3\_biology\_results.md} and
+        \texttt{md/figures/notch1\_h3\_biology.png}.
 \end{enumerate}
 
 Uncertainty bands on the H2 populations are now available via a
