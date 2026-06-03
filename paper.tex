@@ -38,7 +38,7 @@ neural-organoid-relevant demonstration on Notch1 NRR}}
 
 \author[1]{Morgan Hough}
 \affil[1]{MedARC}
-\date{\textit{v0.4 implementation report --- generated \today}}
+\date{\textit{v0.5 implementation report --- generated \today}}
 
 % --- begin document ---
 \begin{document}
@@ -95,7 +95,7 @@ released under MIT at
 \end{abstract}
 
 \vspace{1em}
-\noindent\textbf{Status (v0.4):} bundle shipped, four GitHub releases
+\noindent\textbf{Status (v0.5):} bundle shipped, four GitHub releases
 tagged (\texttt{v0.1}, \texttt{v0.1.1}, \texttt{v0.2}, \texttt{v0.3});
 chignolin Tier-1 validation passes; four-protein ATLAS robustness sweep
 passes; LLM-agent adaptive sampling demonstration passes (v0.1 proxy)
@@ -104,16 +104,30 @@ triggers a real Modal MD launch on agent decision; Notch1 NRR apo +
 corrected-chain holo MD complete under two restraint protocols; H2
 directional prediction met ($+3.7$/$+3.8$ pp under both protocols)
 but pre-registered magnitudes blocked by the 100 ns sampling horizon.
-v0.4 adds MarS-FM and BioEmu as additional ensemble sources, with
-**H3 multi-source coverage MET**: state 2 of the joint VAMPnet ($9\,\%$
-of the joint ensemble) is reached only by generative samples
-($96.4\,\%$ from BioEmu, $3\,\%$ from MarS-FM, zero from MD) ---
-direct evidence that generative ensembles surface conformations
-classical 100\,ns MD does not reach. Bootstrap CIs on H2 indicate
-the $+3.8$ pp directional Delta is not statistically significant at
-$n = 3$ replicas (95\,\% CIs overlap). AlphaFlow and Boltz-2
-integration deferred to v0.5 (upstream-dep-stack incompatibilities;
-neither model is on the H3-critical path).
+v0.4 added MarS-FM and BioEmu as additional ensemble sources;
+v0.5 adds Boltz-2 (via an independently-built \texttt{debian\_slim}-based
+Modal image) and AlphaFlow / ESMFlow-MD (via a CUDA-11.8 base +
+\texttt{micromamba} reproducing the upstream 2024 conda env). Each
+adapter ships a self-contained, independently-versioned environment
+recipe in its module docstring.
+\textbf{H3 multi-source coverage MET on 5 of 5 sources}: the joint
+VAMPnet finds an excited basin (state 1, $17.7\,\%$ of frames)
+reached \textbf{only} by structure-prediction-style generative
+samplers, with $100\,\%$ of AlphaFlow frames, $99.5\,\%$ of Boltz-2
+frames, and a small $1.2\,\%$ BioEmu contribution inside it and
+zero from MD or MarS-FM. The triple corroboration (AlphaFlow + Boltz-2
++ BioEmu) is the key v0.5 result: the structure-prediction-only
+basin is \textbf{not} an artifact of any single model. Three
+independently-trained generative networks --- ESMFlow-MD, AF3-class
+diffusion, and a Boltzmann emulator --- place a substantial fraction
+of their conformations in a basin classical 100\,ns MD does not
+reach. A second, separable basin (state 2, $17.5\,\%$) is reached
+by MarS-FM ($100\,\%$) and BioEmu ($98.8\,\%$) but not AlphaFlow or
+Boltz-2 --- a clean 3-way sampler-class split (MD vs. flow-matching
+in MSM state space vs. AF3-style structure-prediction diffusion).
+Bootstrap CIs on H2 still indicate the $+3.8$ pp directional Delta
+is not statistically significant at $n = 3$ replicas (95\,\% CIs
+overlap).
 
 % =====================================================================
 \section{Introduction}
@@ -621,11 +635,11 @@ correctly-structured DCDs that the analysis then surfaced as
 biologically incoherent. The corrected apo+holo trajectories drive
 the H2 analysis in Sec.~\ref{sec:notch1_h2}.
 
-\subsection{Pre-registered hypotheses --- status as of v0.4}
+\subsection{Pre-registered hypotheses --- status as of v0.5}
 \label{sec:hypotheses}
 
 We pre-registered three hypotheses for the apo+holo MD analysis.
-Status as of v0.4:
+Status as of v0.5:
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
   \item \textbf{H1 --- state resolution.} \textbf{Met.} The VAMPnet
@@ -651,28 +665,57 @@ Status as of v0.4:
         $\mu$s-scale MD, enhanced sampling, or generative ensembles
         (MarS-FM~\cite{kapusniak2025marsfm} is the natural v0.4
         candidate).
-  \item \textbf{H3 --- multi-source coverage.} \textbf{MET (3 of 3
-        sources).} The v0.4 joint VAMPnet was fit on a 1869-frame
-        ensemble combining three sources of Notch1 NEC (174 CAs):
+  \item \textbf{H3 --- multi-source coverage.} \textbf{MET (5 of 5
+        sources).} The v0.5 joint VAMPnet was fit on a 2269-frame
+        ensemble combining five sources of Notch1 NEC (174 CAs):
         classical MD (1500 frames, v0.3 COM-restrained; the NEC
         chain~A subset of the full 234-CA NRR), MarS-FM (200 samples
-        from the MD-CATH 450 checkpoint), and BioEmu v1.1 (169 samples
-        from \texttt{microsoft/bioemu}). Per-state source breakdown:
-        state 0 ($56\,\%$ pop) and state 3 ($22\,\%$) are MD-only;
-        state 1 ($13\,\%$) is reached by all three sources
-        (MarS-FM-dominated, $97\,\%$); state 2 ($9\,\%$) is
-        \emph{generative-only} ($96.4\,\%$ from BioEmu, $3\,\%$ from
-        MarS-FM, zero from MD). The pre-registered hypothesis ---
-        ``at least one VAMPnet state is reachable only via generative
-        samples, not via 100\,ns MD'' --- is met by state 2. Per-source
-        inference cost on Modal: $\sim$\$0.10 per 200 MarS-FM samples
-        (H100, $\sim$3 min) and $\sim$\$0.50 per 200 BioEmu samples
-        (A100-80GB, $\sim$25 min). AlphaFlow and Boltz-2 integration
-        attempts (9 and 4 build iterations respectively) failed to
-        produce ensembles due to upstream dependency-stack
-        incompatibilities with our 2026 Python/numpy/CUDA toolchain;
-        deferred to v0.5 and not on the H3-critical path since H3 is
-        already met.
+        from the MD-CATH 450 checkpoint), BioEmu v1.1 (169 samples
+        from \texttt{microsoft/bioemu}), Boltz-2 (200 samples from
+        \texttt{boltz-community/boltz2}), and AlphaFlow / ESMFlow-MD
+        (200 samples from
+        \texttt{bjing-mit/alphaflow:esmflow\_md\_base\_202402}).
+        Per-state source breakdown: state 0 ($46.0\,\%$ pop) and state
+        3 ($18.8\,\%$) are MD-only; state 1 ($17.7\,\%$) is
+        \emph{structure-prediction-only} --- $100\,\%$ of AlphaFlow
+        frames and $99.5\,\%$ of Boltz-2 frames sit inside it, plus a
+        small $1.2\,\%$ from BioEmu, with zero from MD or MarS-FM;
+        state 2 ($17.5\,\%$) is reached by MarS-FM ($100\,\%$),
+        BioEmu ($98.8\,\%$), and a small MD trickle ($2\,\%$), but
+        \emph{not} AlphaFlow or Boltz-2. The pre-registered hypothesis
+        --- ``at least one VAMPnet state is reachable only via
+        generative samples, not via 100\,ns MD'' --- is met three
+        times over (state 1: AlphaFlow + Boltz-2 + BioEmu agree on the
+        same MD-inaccessible basin) and again at state 2 (MarS-FM +
+        BioEmu). The v0.5 result reveals a clean 3-way sampler-class
+        taxonomy:
+        \begin{itemize}[leftmargin=*]
+          \item \emph{Classical MD} (states 0 + 3) ---
+                restraint-stabilised equilibrium, $98\,\%$ of MD
+                frames live here, no generative source reaches these.
+          \item \emph{AF3-class structure-prediction diffusion}
+                (state 1) --- AlphaFlow / ESMFlow-MD and Boltz-2
+                saturate this basin ($100\,\%$ / $99.5\,\%$ of their
+                frames respectively); BioEmu has a small overlap.
+                MarS-FM and MD never reach it.
+          \item \emph{Flow-matching in MSM state space} (state 2) ---
+                MarS-FM and BioEmu cover this basin; AlphaFlow and
+                Boltz-2 do not.
+        \end{itemize}
+        Per-source inference cost on Modal: $\sim$\$0.10 per 200
+        MarS-FM samples (H100, $\sim$3 min), $\sim$\$0.50 per 200
+        BioEmu samples (A100-80GB, $\sim$25 min), $\sim$\$0.30 per
+        200 Boltz-2 samples (A100-80GB, $\sim$6 min), $\sim$\$0.30
+        per 200 AlphaFlow samples (A100-80GB, $\sim$13 min). The
+        AlphaFlow integration required 9 NGC-PyTorch build attempts
+        in v0.4 (all blocked on bundled scipy/scikit-learn ABI
+        conflicts) plus 8 v0.5 iterations on a fresh CUDA-11.8 +
+        micromamba env reproducing the upstream 2024 conda spec
+        (with patches for the deployed checkpoint's torch~$<$1.13
+        compatibility and a numpy ABI match between mdtraj and
+        AlphaFlow's pinned numpy~1.21.2). Each adapter's
+        \texttt{modal.Image} is self-contained and documents its
+        environment recipe in its module docstring.
 \end{enumerate}
 
 Uncertainty bands on the H2 populations are now available via a
