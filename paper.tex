@@ -664,7 +664,21 @@ Status as of v0.5:
         (Sec.~\ref{sec:notch1_h2}). Recovering them requires either
         $\mu$s-scale MD, enhanced sampling, or generative ensembles
         (MarS-FM~\cite{kapusniak2025marsfm} is the natural v0.4
-        candidate).
+        candidate). \textbf{v0.6 well-tempered metadynamics on the
+        NEC--NTM COM CV} (PLUMED bias, $3 \times 20$~ns walkers on
+        Modal A100-80GB, $\sim$\$3) recovered the underlying free-
+        energy surface directly: a single dissociation barrier at
+        $11.0$~\AA{} of height $115.5$~kJ/mol ($\sim$46~$kT$ at
+        $310$~K) and a fully dissociated free energy of
+        $132.5$~kJ/mol ($\sim$53~$kT$). The Boltzmann weight at
+        the barrier ($\sim$10$^{-20}$) implies a mean first-passage
+        time on the order of $10^{10}$ years per nanosecond
+        attempt, which quantitatively confirms why 100~ns unbiased
+        MD has zero chance of sampling the dissociation transition.
+        \emph{This is the absolute free-energy reference scale the
+        v0.5 H3 analysis lacked} --- it locates where AlphaFlow,
+        Boltz-2, and MarS-FM sample relative to the barrier
+        (Sec.~\ref{sec:notch1_h3}).
   \item \textbf{H3 --- multi-source coverage.} \textbf{MET (5 of 5
         sources).} The v0.5 joint VAMPnet was fit on a 2269-frame
         ensemble combining five sources of Notch1 NEC (174 CAs):
