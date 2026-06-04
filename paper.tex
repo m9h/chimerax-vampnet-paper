@@ -678,7 +678,28 @@ Status as of v0.5:
         \emph{This is the absolute free-energy reference scale the
         v0.5 H3 analysis lacked} --- it locates where AlphaFlow,
         Boltz-2, and MarS-FM sample relative to the barrier
-        (Sec.~\ref{sec:notch1_h3}).
+        (Sec.~\ref{sec:notch1_h3}). \textbf{v0.6 apo--vs--holo
+        metad comparison} (holo: $2 \times 15$~ns walkers, $\sim$\$2,
+        the third walker crashed on a DCD-checkpoint conflict and
+        Modal's $4$~h function timeout truncated the others) gave a
+        holo barrier of $98.4$~kJ/mol and a holo dissociated free
+        energy of $102.2$~kJ/mol, both substantially lower than
+        their apo counterparts: \textbf{$\Delta\Delta G_\text{barrier}
+        = +17.2$~kJ/mol} and $\Delta\Delta G_\text{diss} = +30.3$~kJ/mol
+        (apo $-$ holo, apo more stable in both). Boltzmann-reweighted
+        basin populations are saturated at $\sim$100\,\% for both
+        states at any reasonable cutoff (both basins are $> 100$~kJ/mol
+        deep), so the pre-registered H2 numerical thresholds (apo
+        $\ge 50$\,\%, holo $\le 30$\,\%) cannot be discriminated by
+        equilibrium basin population on this CV. The barrier-height
+        $\Delta\Delta G$ is the meaningful kinetic signal, and its
+        direction (holo barrier \emph{lower}) is the opposite of the
+        v0.1 pre-registered prediction. This is biophysically
+        consistent with the anti-NRR Fab in 3L95 binding the LNR-A
+        face on the outside of the LNR-HD interface, perturbing
+        rather than stabilising the auto-inhibitory contact. See
+        \texttt{md/notch1\_h2\_metad\_reweight.md} and
+        \texttt{md/figures/notch1\_metad\_apo\_vs\_holo\_fes.png}.
   \item \textbf{H3 --- multi-source coverage.} \textbf{MET (5 of 5
         sources).} The v0.5 joint VAMPnet was fit on a 2269-frame
         ensemble combining five sources of Notch1 NEC (174 CAs):
