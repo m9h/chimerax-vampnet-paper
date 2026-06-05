@@ -38,7 +38,7 @@ neural-organoid-relevant demonstration on Notch1 NRR}}
 
 \author[1]{Morgan Hough}
 \affil[1]{MedARC}
-\date{\textit{v0.5 implementation report --- generated \today}}
+\date{\textit{v0.7 implementation report --- generated \today}}
 
 % --- begin document ---
 \begin{document}
@@ -780,6 +780,46 @@ Status as of v0.5:
         breakdown and per-source per-state scatter figure are at
         \texttt{md/notch1\_h3\_biology\_results.md} and
         \texttt{md/figures/notch1\_h3\_biology.png}.
+
+        \paragraph{Hsp90 NTD transferability pilot (v0.7).} To test
+        whether the v0.5--v0.6 Notch1 narrative ("generative
+        ensembles add coverage MD can't reach") generalises, v0.7
+        repeated the pipeline on the human Hsp90$\alpha$
+        N-terminal domain (PDB 1YER apo + 1YET heterogen-stripped
+        for "holo-shape"; $\sim$207~CAs each). 3 $\times$ 300~ns
+        MD per system + the same 4 generative ensembles (AlphaFlow,
+        Boltz-2, BioEmu, MarS-FM) at 200 samples each. The result
+        is the \emph{opposite} of Notch1: Hsp90 MD is a broad
+        equilibrium explorer covering 3 of 4 VAMPnet states ($76\,\%$
+        of MD frames), while AlphaFlow, Boltz-2, and BioEmu all
+        \emph{collapse} to a single ``consensus'' state (RMSD
+        $1.3$--$3$~\AA{} vs the 1YER apo crystal); MarS-FM uniquely
+        also reaches one MD-extended state. A 6-source joint
+        VAMPnet on apo + holo MD + 4 generative further shows that
+        apo MD and holo MD distribute into different states
+        ($88\,\%$ vs $100\,\%$ of frames respectively), with
+        essentially zero overlap, and the 4 generative samplers
+        \emph{all} cluster in the apo-MD basin. The v0.6 finding of
+        a Boltz-2 compactness/conservatism bias replicates strongly:
+        Boltz-2 on Hsp90 NTD has Rg $= 16.4 \pm 0.0$~\AA{} and RMSD
+        vs 1YER $= 1.3 \pm 0.1$~\AA{} across 200 samples --- near-
+        zero diffusion-sampling diversity. Reframed conclusion:
+        \emph{generative ensembles reflect ``what does the sequence
+        prior predict?'' more than ``what's the conformational
+        equilibrium?'';} the two coincide for some systems (Hsp90
+        NTD apo MD aligns with the prior) but diverge for others
+        (Notch1 NRR auto-inhibited MD vs AF3-class diffusion). See
+        \texttt{md/hsp90\_ntd\_h3\_results.md},
+        \texttt{md/figures/hsp90\_ntd\_apo\_holo\_joint\_h3.png}.
+
+        \paragraph{Holo metad updated (v0.7).} A second batch of
+        holo walkers added $\sim$30~ns of biased dynamics, widening
+        the apo--holo barrier $\Delta\Delta G$ to
+        $\mathbf{+28.8}$~kJ/mol (v0.6 was $+17.2$) and the
+        dissociated $\Delta\Delta G$ to $\mathbf{+56.2}$~kJ/mol
+        (v0.6 was $+30.3$). Direction unchanged: anti-NRR Fab
+        \emph{lowers} the dissociation barrier on the same
+        NEC--NTM COM CV.
 \end{enumerate}
 
 Uncertainty bands on the H2 populations are now available via a
