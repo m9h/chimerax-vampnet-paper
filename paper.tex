@@ -785,21 +785,31 @@ Status as of v0.5:
         whether the v0.5--v0.6 Notch1 narrative ("generative
         ensembles add coverage MD can't reach") generalises, v0.7
         repeated the pipeline on the human Hsp90$\alpha$
-        N-terminal domain (PDB 1YER apo + 1YET heterogen-stripped
-        for "holo-shape"; $\sim$207~CAs each). 3 $\times$ 300~ns
-        MD per system + the same 4 generative ensembles (AlphaFlow,
-        Boltz-2, BioEmu, MarS-FM) at 200 samples each. The result
-        is the \emph{opposite} of Notch1: Hsp90 MD is a broad
-        equilibrium explorer covering 3 of 4 VAMPnet states ($76\,\%$
-        of MD frames), while AlphaFlow, Boltz-2, and BioEmu all
-        \emph{collapse} to a single ``consensus'' state (RMSD
-        $1.3$--$3$~\AA{} vs the 1YER apo crystal); MarS-FM uniquely
-        also reaches one MD-extended state. A 6-source joint
-        VAMPnet on apo + holo MD + 4 generative further shows that
-        apo MD and holo MD distribute into different states
-        ($88\,\%$ vs $100\,\%$ of frames respectively), with
-        essentially zero overlap, and the 4 generative samplers
-        \emph{all} cluster in the apo-MD basin. The v0.6 finding of
+        N-terminal domain. Two apo MD trajectories were run, seeded
+        from two crystal forms with different lid conformations:
+        \textbf{MD\_apo} starts from PDB 1YER (the canonical apo
+        crystal, no ligand); \textbf{MD\_apoFromHolo} starts from
+        PDB 1YET (the geldanamycin-bound holo crystal) but with the
+        ligand stripped during prep (PDBFixer
+        \texttt{removeHeterogens}). Both are apo simulations
+        ($\sim$207~CAs each, no ligand present in MD); the
+        distinction is the starting conformation only. 3 $\times$
+        300~ns MD per starting point + the same 4 generative
+        ensembles (AlphaFlow, Boltz-2, BioEmu, MarS-FM) at 200
+        samples each. The result is the \emph{opposite} of Notch1:
+        Hsp90 MD is a broad equilibrium explorer covering 3 of 4
+        VAMPnet states ($76\,\%$ of MD frames), while AlphaFlow,
+        Boltz-2, and BioEmu all \emph{collapse} to a single
+        ``consensus'' state (RMSD $1.3$--$3$~\AA{} vs the 1YER apo
+        crystal); MarS-FM uniquely also reaches one MD-extended
+        state. A 6-source joint VAMPnet on MD\_apo + MD\_apoFromHolo
+        + 4 generative further shows that the two MD trajectories
+        distribute into \emph{disjoint} VAMPnet states ($88\,\%$
+        vs $100\,\%$ of frames respectively), and the 4 generative
+        samplers \emph{all} cluster in the MD\_apo basin --- 300~ns
+        is insufficient for the two starting conformations to
+        equilibrate to a common ensemble; starting-conformation
+        memory dominates on this timescale. The v0.6 finding of
         a Boltz-2 compactness/conservatism bias replicates strongly:
         Boltz-2 on Hsp90 NTD has Rg $= 16.4 \pm 0.0$~\AA{} and RMSD
         vs 1YER $= 1.3 \pm 0.1$~\AA{} across 200 samples --- near-
